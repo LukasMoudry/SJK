@@ -206,18 +206,23 @@ impl ViewerConsole {
 
     /// Color the existing safe chat command, preserving destination and escaping.
     pub(crate) fn color_chat_command(&self, command: &str) -> String {
+        let colored = self.color_chat_only_command(command);
+        super::super::client_options::style_chat(
+            &colored,
+            self.text_value("cl_chatstyleprefix").unwrap_or(""),
+            self.text_value("cl_chatstylesuffix").unwrap_or(""),
+        )
+    }
+
+    /// Apply the chat colour policy without composer-only prefix/suffix styling.
+    pub(crate) fn color_chat_only_command(&self, command: &str) -> String {
         let mask = self.integer_cvar("cl_colorstring").unwrap_or(0) as u16 & 1023;
-        let colored = color_chat(
+        color_chat(
             command,
             mask,
             self.integer_cvar("cl_colorstringrandom")
                 .unwrap_or(2)
                 .clamp(1, 1000) as u32,
-        );
-        super::super::client_options::style_chat(
-            &colored,
-            self.text_value("cl_chatstyleprefix").unwrap_or(""),
-            self.text_value("cl_chatstylesuffix").unwrap_or(""),
         )
     }
 }

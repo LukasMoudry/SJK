@@ -53,11 +53,6 @@ impl ViewerConsole {
         let worn = crate::cosmetics::typed_colour::worn(self);
         let mut resolver =
             console_scripting::Resolver::new(&self.config_directory, self.script_vfs.as_deref());
-        let chat_mask = self.integer_cvar("cl_colorstring").unwrap_or(0) as u16 & 1023;
-        let chat_random = self
-            .integer_cvar("cl_colorstringrandom")
-            .unwrap_or(2)
-            .clamp(1, 1000) as u32;
         let pending_connection = &mut self.pending_connection;
         let pending_demo = &mut self.pending_demo;
         let pending_screenshot = &mut self.pending_screenshot;
@@ -221,8 +216,6 @@ impl ViewerConsole {
                                 }
                                 _ => payload,
                             };
-                            let payload =
-                                console_client::color_chat(payload, chat_mask, chat_random);
                             if ["say", "say_team", "tell"]
                                 .iter()
                                 .any(|name| tokens[0].eq_ignore_ascii_case(name))
@@ -230,7 +223,7 @@ impl ViewerConsole {
                                 if pending_chat.len() >= 64 {
                                     return Some(Err("Chat command queue is full".into()));
                                 }
-                                pending_chat.push_back(payload);
+                                pending_chat.push_back(payload.to_owned());
                                 return Some(Ok(Vec::new()));
                             }
                             let Some(active) = session.as_deref_mut() else {

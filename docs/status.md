@@ -1,3 +1,18 @@
+## JoF EJK chat placeholders
+
+17/10/2026, `feat/ejk-chat-placeholders`: global, team and private game chat
+expands JoF's complete-word `%H%`, `%S%`, `%U%`, `%UKM%`, `%UM%`, `%F%`, `%W%`,
+`%A%`, `%P%`, `%T%` and `%T2%` placeholders from the current local player state,
+including chat composed in the field and commands run from the console or a bind.
+The names, units, rounding and 12/24-hour forms follow `CG_Say_f` at official JoF
+EJK alpha commit `9822a9d6` (also present unchanged in current beta); expansion is
+local before the existing protocol-26 chat escaping. SJK's bounded player prediction
+does not yet carry armor, so `%S%` uses the latest snapshot and can trail a predicted
+pickup by one snapshot. Verified on 17/10/2026 with the four focused placeholder tests,
+`cargo fmt --all --check`, locked workspace build and tests, locked all-target clippy,
+and a locked release build of `sjk-viewer` and `sjk-dedicated`; existing warnings
+remain. The feature has not been tried in a game.
+
 ## SJK chat messages up to 300 characters
 
 16/10/2026, `personal/chat-300` (Sol's request), with the hub's `chat-300` (deployed

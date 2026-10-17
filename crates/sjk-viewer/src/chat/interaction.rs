@@ -324,10 +324,7 @@ impl crate::GpuState {
         }
         match self.chat.handle_key(event) {
             ChatInputResult::Submit(command) => {
-                let command = self.console.as_ref().map_or_else(
-                    || command.clone(),
-                    |console| console.color_chat_command(&command),
-                );
+                let command = self.prepare_chat_command(&command, true);
                 self.send_chat_command(&command);
             }
             ChatInputResult::Sjk(text) => self.send_sjk_chat(text),

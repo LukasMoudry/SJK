@@ -2070,6 +2070,37 @@ client number, a team letter (F free, R red, B blue, S spectator), the name
 and ` (bot)` after bots, then `Listed N clients`. Commands that take a client number
 use it ([player_ids.rs](../crates/sjk-viewer/src/player_ids.rs)).
 
+### Chat placeholders
+
+SJK supports JoF EJK's placeholders in global, team and private game chat, whether
+the message comes from the composer, console or a bind. A placeholder is replaced only
+when it is a complete whitespace-separated word, without regard to letter case:
+
+| Placeholder | Value |
+| --- | --- |
+| `%H%` | Health |
+| `%S%` | Shield |
+| `%U%` | Horizontal speed in game units per second, rounded |
+| `%UKM%` | Horizontal speed in kilometres per hour, one decimal |
+| `%UM%` | Horizontal speed in miles per hour, one decimal |
+| `%F%` | Force power |
+| `%W%` | JoF's short current-weapon name |
+| `%A%` | Current weapon's ammo pool |
+| `%P%` | Latest snapshot ping |
+| `%T%` | Local time on a 12-hour clock |
+| `%T2%` | Local time on a 24-hour clock |
+
+For example, `bind h "say_team ^2Health: %H% ^5Shield: %S%"` reports the values current
+when the key is pressed. `HP=%H%` remains literal because JoF replaces whole command
+arguments rather than text inside a word. The implementation follows
+`CG_Say_f` in JoF EJK's `codemp/cgame/cg_consolecmds.c` at official alpha commit
+`9822a9d6`; the same table is present in its current beta and dates back to the
+1.5.x line. Expansion happens before SJK's existing colour/style and chat escaping,
+and does not change protocol 26. Health, movement, force, weapon and ammo use SJK's
+locally predicted state. Armor uses the latest authoritative snapshot, matching the
+current bounded HUD prediction; an armor pickup can therefore appear one snapshot
+later than in JoF.
+
 `cg_chatRememberChannel` (default 1, Settings > HUD > Remember chat channel)
 makes the chat key (`messagemode`) open the composer on the channel of the last
 message sent from it: All, Team, SJK, or a whisper to a player still in the game

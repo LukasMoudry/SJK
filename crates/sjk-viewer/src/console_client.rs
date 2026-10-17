@@ -23,8 +23,6 @@ mod remaps;
 #[path = "console_restarts.rs"]
 mod restarts;
 
-pub(super) use identity::color_chat;
-
 /// Completion/help inventory for commands owned by viewer services.
 pub(super) const COMMANDS: &[(&str, &str)] = &[
     (
@@ -792,10 +790,7 @@ impl crate::GpuState {
         ) else {
             return Ok(Vec::new());
         };
-        let command = self.console.as_ref().map_or_else(
-            || command.clone(),
-            |console| console.color_chat_command(&command),
-        );
+        let command = self.prepare_chat_command(&command, true);
         self.send_chat_command(&command);
         Ok(Vec::new())
     }
@@ -807,6 +802,7 @@ impl crate::GpuState {
             .as_mut()
             .and_then(|c| c.pending_chat.pop_front())
         {
+            let command = self.prepare_chat_command(&command, false);
             self.send_chat_command(&command);
         }
         if self.live_presentation_ready()

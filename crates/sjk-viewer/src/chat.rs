@@ -11,6 +11,7 @@ mod interaction;
 mod layout;
 pub(crate) mod marks;
 mod options;
+mod placeholders;
 mod player_actions;
 pub(crate) mod reply;
 pub(crate) mod sjk;
