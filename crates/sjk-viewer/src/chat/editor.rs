@@ -40,6 +40,7 @@ impl Editor {
     pub(super) fn insert(&mut self, value: &str) {
         self.edit.insert_fitting(&mut self.text, value, |text| {
             text.chars().count() <= CHAT_DRAFT_CHARS
+                && sjk_client::chat_commands(sjk_client::ChatDestination::Global, text).is_ok()
         });
     }
 
@@ -92,12 +93,14 @@ mod length_tests {
     use super::*;
 
     #[test]
-    fn the_field_keeps_several_messages_and_remains_bounded() {
+    fn the_field_keeps_at_most_four_messages() {
         let mut editor = Editor::new(Channel::Global);
         editor.insert(&"%".repeat(CHAT_DRAFT_CHARS + 100));
-        assert_eq!(editor.text.chars().count(), CHAT_DRAFT_CHARS);
-        assert!(
-            sjk_client::chat_commands(sjk_client::ChatDestination::Global, &editor.text).len() > 3
-        );
+        let commands = sjk_client::chat_commands(sjk_client::ChatDestination::Global, &editor.text)
+            .expect("the editor refuses a fifth message");
+        assert_eq!(commands.len(), sjk_client::MAX_CHAT_PIECES);
+        let full = editor.text.clone();
+        editor.insert("%");
+        assert_eq!(editor.text, full);
     }
 }

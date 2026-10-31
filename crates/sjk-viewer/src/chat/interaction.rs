@@ -350,12 +350,9 @@ impl crate::GpuState {
         if self.route_encrypted_whisper(&command) {
             return;
         }
-        let mod_chat = self
-            .console
-            .as_ref()
-            .map(|console| console.mod_chat_commands())
-            .unwrap_or_default();
-        let commands = split_outgoing_chat(&command, mod_chat);
+        let Some(commands) = self.outgoing_chat_parts(&command) else {
+            return;
+        };
         let origin = if commands.len() > 1 {
             sjk_client::ReliableCommandOrigin::ChatPart
         } else {
@@ -377,10 +374,40 @@ impl crate::GpuState {
         }
     }
 
-    /// Send an expanded and coloured chat `command` to the game server; `recipient` is
-    /// a whisper's, for the console's note of it.
-    pub(crate) fn send_chat_to_server(&mut self, command: &str, recipient: Option<String>) {
-        self.send_chat_to_server_from(command, recipient, sjk_client::ReliableCommandOrigin::Chat);
+    /// Send a chat command through the game server even when it could have been an
+    /// encrypted whisper. The failure card uses this only after the player chooses
+    /// "Send unencrypted".
+    pub(crate) fn send_plain_chat_command(&mut self, command: &str, recipient: Option<String>) {
+        let Some(commands) = self.outgoing_chat_parts(command) else {
+            return;
+        };
+        let origin = if commands.len() > 1 {
+            sjk_client::ReliableCommandOrigin::ChatPart
+        } else {
+            sjk_client::ReliableCommandOrigin::Chat
+        };
+        for command in commands {
+            self.send_chat_to_server_from(&command, recipient.clone(), origin);
+        }
+    }
+
+    fn outgoing_chat_parts(&mut self, command: &str) -> Option<Vec<String>> {
+        let mod_chat = self
+            .console
+            .as_ref()
+            .map(|console| console.mod_chat_commands())
+            .unwrap_or_default();
+        match split_outgoing_chat(command, mod_chat) {
+            Ok(commands) => Some(commands),
+            Err(_) => {
+                const TOO_LONG: &str = "Message is too long (four chat messages maximum).";
+                self.chat.notice = TOO_LONG;
+                if let Some(console) = self.console.as_mut() {
+                    console.push_log(format!("^3{TOO_LONG}"));
+                }
+                None
+            }
+        }
     }
 
     fn send_chat_to_server_from(
@@ -408,12 +435,15 @@ impl crate::GpuState {
     }
 }
 
-fn split_outgoing_chat(command: &str, mod_chat: &[&str]) -> Vec<String> {
+fn split_outgoing_chat(
+    command: &str,
+    mod_chat: &[&str],
+) -> Result<Vec<String>, sjk_client::ChatDraftTooLong> {
     let Ok(tokens) = sjk_shell::tokenize(command) else {
-        return vec![command.to_owned()];
+        return Ok(vec![command.to_owned()]);
     };
     let Some(verb) = tokens.first() else {
-        return vec![command.to_owned()];
+        return Ok(vec![command.to_owned()]);
     };
     let (destination, text) = if verb.eq_ignore_ascii_case("say") {
         (Some(ChatDestination::Global), tokens[1..].join(" "))
@@ -423,22 +453,24 @@ fn split_outgoing_chat(command: &str, mod_chat: &[&str]) -> Vec<String> {
         (Some(ChatDestination::Admin), tokens[1..].join(" "))
     } else if verb.eq_ignore_ascii_case("tell") && tokens.len() >= 3 {
         let Ok(slot) = tokens[1].parse() else {
-            return vec![command.to_owned()];
+            return Ok(vec![command.to_owned()]);
         };
         (Some(ChatDestination::Player(slot)), tokens[2..].join(" "))
     } else if mod_chat.iter().any(|name| verb.eq_ignore_ascii_case(name)) {
         (None, tokens[1..].join(" "))
     } else {
-        return vec![command.to_owned()];
+        return Ok(vec![command.to_owned()]);
     };
     let text = sjk_client::chat_unescape(&text);
     if let Some(destination) = destination {
         return sjk_client::chat_commands(destination, &text);
     }
-    sjk_client::chat_commands(ChatDestination::Global, &text)
-        .into_iter()
-        .map(|piece| format!("{verb}{}", &piece[3..]))
-        .collect()
+    sjk_client::chat_commands(ChatDestination::Global, &text).map(|commands| {
+        commands
+            .into_iter()
+            .map(|piece| format!("{verb}{}", &piece[3..]))
+            .collect()
+    })
 }
 
 fn whisper_destination(command: &str) -> Option<u16> {
@@ -470,7 +502,7 @@ mod whisper_destination_tests {
         let text = format!("{} % \"end\"", "many words ".repeat(40));
         let full = sjk_client::chat_command_full(sjk_client::ChatDestination::Global, &text)
             .expect("chat");
-        let pieces = split_outgoing_chat(&full, &[]);
+        let pieces = split_outgoing_chat(&full, &[]).expect("four messages");
         assert!(pieces.len() >= 3);
         assert!(pieces.iter().all(|piece| {
             let tokens = sjk_shell::tokenize(piece).expect("safe command");
@@ -480,9 +512,26 @@ mod whisper_destination_tests {
         let pieces = split_outgoing_chat(
             &format!("clansay \"{}\"", "clan words ".repeat(30)),
             &["clansay"],
-        );
+        )
+        .expect("four messages");
         assert!(pieces.len() > 1);
         assert!(pieces.iter().all(|piece| piece.starts_with("clansay \"")));
+
+        // The encrypted-whisper failure card's Send unencrypted choice uses this
+        // same splitter instead of handing its full stored command to the server.
+        let pieces =
+            split_outgoing_chat(&format!("tell 7 \"{}\"", "private words ".repeat(30)), &[])
+                .expect("four-message whisper");
+        assert!(pieces.len() > 1);
+        assert!(pieces.iter().all(|piece| piece.starts_with("tell 7 \"")));
+    }
+
+    #[test]
+    fn refuses_more_than_four_pieces() {
+        assert_eq!(
+            split_outgoing_chat(&format!("say \"{}\"", "%".repeat(1_200)), &[]),
+            Err(sjk_client::ChatDraftTooLong)
+        );
     }
 }
 

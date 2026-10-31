@@ -32,7 +32,7 @@ Add each release's notes here when it is tagged (docs/sjk.md "Releases").
 -->
 ## Unreleased
 
-- Long game-chat messages are sent completely as two or more messages, split at a word where possible, in All, Team, whispers, admin and mod chat such as clan chat _(LukasMoudry)_
+- Long game-chat messages are sent completely as up to four messages, split at a word where possible, in All, Team, whispers (including Send unencrypted), admin and mod chat such as clan chat; their colour carries on, and a command pressed while the pieces wait is not lost _(LukasMoudry)_
 
 - jaPRO plugin options: Force jumps (Settings > Mods, `japro.plugin 1`) is offered now that SJK predicts it: off, holding jump bunny hops instead of Force jumping, on jaPRO servers that let players choose _(Sol, after Kushina's idea and Lumaya's PR #282)_
 

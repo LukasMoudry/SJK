@@ -18,7 +18,9 @@
 //! times used to queue twenty hugs released one a second, long after the
 //! player stopped (hub report 73, 17/10/2026). Typed chat is deduplicated but
 //! never expires: a message the player wrote is still worth reading late,
-//! while a late action fires in a situation the player has left.
+//! while a late action fires in a situation the player has left. The exception
+//! is an action queued behind the pieces of one submitted chat draft: it keeps
+//! its place without expiring, rather than being silently lost behind that draft.
 //!
 //! What the player sends also goes ahead of the client's own `score` requests still
 //! waiting (one every two seconds while dead or holding the scoreboard), so typed chat
@@ -54,7 +56,8 @@ pub enum ReliableCommandOrigin {
     #[default]
     System,
     /// A player's bind or console command: not queued twice while an
-    /// identical one waits, dropped after [`INPUT_COMMAND_TTL`].
+    /// identical one waits, dropped after [`INPUT_COMMAND_TTL`] unless it was
+    /// queued behind the pieces of one submitted chat draft.
     Input,
     /// Chat the player typed: not queued twice while identical chat waits,
     /// never dropped.
@@ -109,7 +112,13 @@ impl ReliableCommandPacer {
         now: Instant,
     ) -> bool {
         self.drop_expired(now);
-        let expires = (origin == ReliableCommandOrigin::Input).then(|| now + INPUT_COMMAND_TTL);
+        let waits_for_chat_draft = origin == ReliableCommandOrigin::Input
+            && self
+                .outbox
+                .iter()
+                .any(|queued| queued.origin == ReliableCommandOrigin::ChatPart);
+        let expires = (origin == ReliableCommandOrigin::Input && !waits_for_chat_draft)
+            .then(|| now + INPUT_COMMAND_TTL);
         if matches!(
             origin,
             ReliableCommandOrigin::Input | ReliableCommandOrigin::Chat
@@ -239,6 +248,33 @@ mod tests {
         }
         assert_eq!(sent, chat);
         assert_eq!(pacer.queued(), 0);
+    }
+
+    #[test]
+    fn input_command_is_not_lost_behind_one_submitted_chat_draft() {
+        let start = Instant::now();
+        let mut pacer = pacer();
+        let chat: [&[u8]; 4] = [b"say a", b"say b", b"say c", b"say d"];
+        for command in chat {
+            pacer.push(command.to_vec(), ReliableCommandOrigin::ChatPart, start);
+        }
+        pacer.push(b"team s".to_vec(), ReliableCommandOrigin::Input, start);
+        let mut sent = Vec::new();
+        for step in 0..5 {
+            if let Some(command) = pacer.pop_due(start + DEFAULT_COMMAND_INTERVAL * step) {
+                sent.push(command);
+            }
+        }
+        assert_eq!(
+            sent,
+            vec![
+                b"say a".to_vec(),
+                b"say b".to_vec(),
+                b"say c".to_vec(),
+                b"say d".to_vec(),
+                b"team s".to_vec(),
+            ]
+        );
     }
 
     #[test]
